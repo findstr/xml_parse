@@ -566,3 +566,96 @@ const struct xml_element *xml_walkprev(const struct xml_element *node)
         assert(node);
         return node->next;
 }
+
+
+struct xml_element *xml_new(const wchar_t *name, const wchar_t *value)
+{
+        int name_len;
+        int value_len;
+        wchar_t *name_tmp;
+        wchar_t *value_tmp;
+        struct xml_element      *elm;
+
+        assert(name);
+        assert(value);
+ 
+        elm = (struct xml_element *)malloc(sizeof(*elm));
+        if (elm == NULL)
+                return elm;
+
+        memset(elm, 0, sizeof(*elm));
+
+        name_len = wcslen(name);
+        value_len = wcslen(value);
+ 
+        if (name_len == 0) {
+                free(elm);
+                return NULL;
+        }
+
+        if (name_len) {
+                name_tmp = (wchar_t *)malloc(name_len + sizeof(wchar_t));
+                wcsncpy(name_tmp, name, name_len);
+                name_tmp[name_len] = 0;
+        }
+
+        if (value_len) {
+                value_tmp = (wchar_t *)malloc(value_len + sizeof(wchar_t));
+                wcsncpy(value_tmp, value, value_len);
+                value_tmp[value_len] = 0;
+        } else {
+                value_tmp = NULL;
+        }
+
+        if (name_tmp == NULL) {
+                if (value_tmp)
+                        free(value_tmp);
+                free(elm);
+
+                return NULL;
+        }
+
+        elm->name = name;
+        elm->value = value;
+
+        return elm;
+}
+
+struct xml_element *xml_append_chlid(struct xml_element *parent, struct xml_element *child)
+{
+        struct xml_element *tmp;
+        assert(parent);
+        assert(child);
+
+        if (parent->child == NULL) {
+                parent->child = child;
+                child->parent = parent;
+                return child;
+        }
+
+        for (tmp = parent->child; tmp->next; tmp = tmp->next)
+                ;
+
+        tmp->next = child;
+        child->prev = tmp;
+        child->parent = tmp->parent;
+
+        return child;
+}
+
+struct xml_element *xml_append_brother(struct xml_element *b1, struct xml_element *b2)
+{
+        struct xml_element *tmp;
+
+        assert(b1);
+        assert(b2);
+
+        for (tmp = b1; tmp->next; tmp = tmp->next)
+                ;
+
+        tmp->next = b2;
+        b2->prev = tmp;
+        b2->parent = b1->parent;
+
+        return b2;
+}

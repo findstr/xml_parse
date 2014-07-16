@@ -524,9 +524,34 @@ end:
 	return tree;
 }
 
+static void free_elem(struct xml_element *elm)
+{
+	assert(elm);
+	array_release(elm->attr);
+	if (elm->name)
+		free((wchar_t *)elm->name);
+	if (elm->value)
+		free((wchar_t *)elm->value);
+
+	free(elm);
+}
+
 int xml_free(struct xml_element *tree)
 {
+	struct xml_element *tmp;
 
+	if (tree == NULL)
+		return 0;
+
+	for (tmp = tree; tmp; tmp = tmp->next) {
+		if (tmp->child)
+			xml_free(tmp->child);
+		
+		free_elem(tmp);
+	}
+
+
+	
         return 0;
 }
 
@@ -626,6 +651,9 @@ struct xml_element *xml_append_chlid(struct xml_element *parent, struct xml_elem
         struct xml_element *tmp;
         assert(parent);
         assert(child);
+
+	if (parent->value != NULL)
+		return NULL;
 
         if (parent->child == NULL) {
                 parent->child = child;

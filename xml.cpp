@@ -75,6 +75,7 @@ static int add_brother(struct xml_element **dst, struct xml_element *src)
 
 	elm->next = src;
 	src->prev = elm;
+        src->parent = elm->parent;       
 
 	return 0;
 }
@@ -95,7 +96,6 @@ static int add_child(struct xml_element **dst, struct xml_element *src)
 		return 0;
 	}
 
-	src->parent = elm;
 	add_brother(&elm->child, src);
 
 	return 0;
@@ -103,10 +103,14 @@ static int add_child(struct xml_element **dst, struct xml_element *src)
 
 static int close_elem(struct xml_state_content *content)
 {
+        int len;
 	assert(content);
 
-	if (content->tmp)
+	if (content->tmp) {
+                len = strlen_t(content->data_curr, content->data_end, L">");
 		content->tmp->is_closed = 1;
+                content->data_curr += len + 1;
+        }
 
 	return 0;
 }
@@ -346,7 +350,7 @@ static int state_value(struct xml_state_content *content)
 		return 0;
 	}
 
-	len = strlen_t(content->data_curr, content->data_end, L"> ");
+	len = strlen_t(content->data_curr, content->data_end, L"< ");
 
 	assert(content->tmp);
 
@@ -384,7 +388,7 @@ static int state_end(struct xml_state_content *content)
 }
 static int state_dispatch(struct xml_state_content *content)
 {
-	if (content->data_curr >= content->data_end) {
+	if (content->last_state != XML_STATE_CLOSE && content->data_curr >= content->data_end) {
 		content->have_err = 1;
 		content->curr_state = XML_STATE_END;
 		return 0;
@@ -413,7 +417,7 @@ static int state_dispatch(struct xml_state_content *content)
 		} else if ((content->data_end - content->data_curr > 2 && *content->data_curr == L'/' && *(content->data_curr + 1) == L'>') ||
 			(content->data_end - content->data_curr > 2 && *content->data_curr == L'?' && *(content->data_curr + 1) == L'>')) {
 			content->curr_state = XML_STATE_CLOSE;
-			content->data_curr += 2;
+			content->data_curr += 1;
 		} else {
 			content->have_err = 1;
 			content->curr_state = XML_STATE_END;
@@ -485,7 +489,7 @@ static xml_element *parse_data(const wchar_t *data, unsigned long size)
 	return state_content.tree;
 }
 
-struct xml_element *xml_load(const wchar_t *path)
+struct xml_element *xml_load_file(const wchar_t *path)
 {
 	FILE *fp;
 	wchar_t	*data;
@@ -520,5 +524,45 @@ end:
 	return tree;
 }
 
+int xml_free(struct xml_element *tree)
+{
+
+        return 0;
+}
+
+const wchar_t *xml_get_name(const struct xml_element *node)
+{
+        assert(node);
+        return node->name;
+}
+
+const wchar_t *xml_get_value(const struct xml_element *node)
+{
+        assert(node);
+        return node->value;
+}
 
 
+const struct xml_element *xml_walkdown(const struct xml_element *node)
+{
+        assert(node);
+        return node->child;
+}
+
+const struct xml_element *xml_walkup(const struct xml_element *node)
+{
+        assert(node);
+        return node->parent;
+}
+
+const struct xml_element *xml_walknext(const struct xml_element *node)
+{
+        assert(node);
+        return node->next;
+}
+
+const struct xml_element *xml_walkprev(const struct xml_element *node)
+{
+        assert(node);
+        return node->next;
+}

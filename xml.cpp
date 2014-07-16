@@ -543,10 +543,12 @@ int xml_free(struct xml_element *tree)
 	if (tree == NULL)
 		return 0;
 
-	for (tmp = tree; tmp; tmp = tmp->next) {
-		if (tmp->child)
+        while (tree)
+		if (tree->child)
 			xml_free(tmp->child);
 		
+                tmp = tree;
+                tree = tree->next;
 		free_elem(tmp);
 	}
 

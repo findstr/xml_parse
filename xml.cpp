@@ -524,7 +524,7 @@ end:
 	return tree;
 }
 
-static void free_elem(struct xml_element *elm)
+static void xml_free_element(struct xml_element *elm)
 {
 	assert(elm);
 
@@ -551,7 +551,7 @@ int xml_free(struct xml_element *tree)
 			xml_free(tmp->child);
 		
                 tree = tree->next;
-		free_elem(tmp);
+		xml_free_element(tmp);
 	}
 
         return 0;
@@ -651,7 +651,7 @@ struct xml_element *xml_new(const wchar_t *name, const wchar_t *value)
         return elm;
 }
 
-struct xml_element *xml_append_chlid(struct xml_element *parent, struct xml_element *child)
+struct xml_element *xml_append_child(struct xml_element *parent, struct xml_element *child)
 {
         struct xml_element *tmp;
         assert(parent);

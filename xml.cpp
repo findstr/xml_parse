@@ -527,7 +527,9 @@ end:
 static void free_elem(struct xml_element *elm)
 {
 	assert(elm);
-	array_release(elm->attr);
+
+        if (elm->attr)
+	        array_release(elm->attr);
 	if (elm->name)
 		free((wchar_t *)elm->name);
 	if (elm->value)
@@ -543,17 +545,15 @@ int xml_free(struct xml_element *tree)
 	if (tree == NULL)
 		return 0;
 
-        while (tree)
-		if (tree->child)
+        while (tree) {
+                tmp = tree;
+		if (tmp->child)
 			xml_free(tmp->child);
 		
-                tmp = tree;
                 tree = tree->next;
 		free_elem(tmp);
 	}
 
-
-	
         return 0;
 }
 
@@ -622,7 +622,7 @@ struct xml_element *xml_new(const wchar_t *name, const wchar_t *value)
         }
 
         if (name_len) {
-                name_tmp = (wchar_t *)malloc(name_len + sizeof(wchar_t));
+                name_tmp = (wchar_t *)malloc((name_len + 1) * sizeof(wchar_t));
                 wcsncpy(name_tmp, name, name_len);
                 name_tmp[name_len] = 0;
         } else {
@@ -630,7 +630,7 @@ struct xml_element *xml_new(const wchar_t *name, const wchar_t *value)
         }
 
         if (value_len) {
-                value_tmp = (wchar_t *)malloc(value_len + sizeof(wchar_t));
+                value_tmp = (wchar_t *)malloc((value_len + 1) * sizeof(wchar_t));
                 wcsncpy(value_tmp, value, value_len);
                 value_tmp[value_len] = 0;
         } else {
@@ -645,8 +645,8 @@ struct xml_element *xml_new(const wchar_t *name, const wchar_t *value)
                 return NULL;
         }
 
-        elm->name = name;
-        elm->value = value;
+        elm->name = name_tmp;
+        elm->value = value_tmp;
 
         return elm;
 }
@@ -657,8 +657,7 @@ struct xml_element *xml_append_chlid(struct xml_element *parent, struct xml_elem
         assert(parent);
         assert(child);
 
-	if (parent->value != NULL)
-		return NULL;
+	assert(parent->value == NULL);
 
         if (parent->child == NULL) {
                 parent->child = child;

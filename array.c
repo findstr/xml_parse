@@ -113,7 +113,12 @@ int array_erase(struct array *arr, int em_index)
 
 int array_size(struct array *arr)
 {
+
+        if (arr == NULL)
+                return 0;
+
         assert(arr);
+
         return arr->em_cnt;
 }
 

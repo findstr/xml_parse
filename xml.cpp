@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <wchar.h>
 #include <sys/stat.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -16,6 +17,7 @@ struct xml_attr {
 };
 
 struct xml_element {
+        enum xml_type           type;
 	int			is_closed;
 	const  wchar_t		*name;
 	const  wchar_t		*value;
@@ -49,14 +51,16 @@ struct xml_state_content {
 
 
 
-static struct xml_element *new_elem()
+static struct xml_element *new_elem(enum xml_type type)
 {
 	struct xml_element *elem;
 
 	elem = (struct xml_element *)malloc(sizeof(*elem));
 	
-	if (elem)
+	if (elem) {
 		memset(elem, 0, sizeof(*elem));
+                elem->type = type;
+        }
 
 	return elem;
 }
@@ -172,11 +176,14 @@ static int add_elem(struct xml_state_content *content)
 		return 0;
 	}
 
-	if (content->curr->is_closed)
+        if (content->curr->type == XML_ROOT) {
+                add_child(&content->curr, src);
+        } else if (content->curr->is_closed) {
 		add_brother(&content->curr, src);
-	else
+        } else {
 		add_child(&content->curr, src);
-	
+        }
+
 	content->curr = content->tmp;
 
 	if (content->curr->is_closed && content->curr->parent)
@@ -206,12 +213,18 @@ static int state_open(struct xml_state_content *content)
 	if (*data == L'<')
 		data++;
 
-	if (*data == L'?')
+	if (*data == L'?') {
+	        content->tmp = new_elem(XML_ROOT);
 		data++;
+        } else if (*data == L'!' && *(data + 1) == L'-' && *(data + 2) == L'-') {
+                content->tmp = new_elem(XML_COMMENT);
+                data += 3;
+        } else {
+                content->tmp = new_elem(XML_ELEMENT);
+        }
 
 	content->data_curr = data;
 
-	content->tmp = new_elem();
 	if (content->tmp == NULL) {
 		content->have_err = 1;
 		content->curr_state = XML_STATE_END;
@@ -242,9 +255,12 @@ static int state_name(struct xml_state_content *content)
 
 	content->tmp->name = name;
 
-	if (name[name_len - 1] == '/' || name[name_len - 1] == L'?') {
+	if (name[name_len - 1] == L'/' || name[name_len - 1] == L'?') {
 		name[name_len - 1] = 0;
 		content->curr_state = XML_STATE_OPEN;
+
+                if (content->tmp->type == XML_ELEMENT)
+                        content->tmp->type = XML_ELEMENT_SELF;
 
 		close_elem(content);
 		add_elem(content);
@@ -376,8 +392,6 @@ static int state_close(struct xml_state_content *content)
 	close_elem(content);
 	add_elem(content);
 	
-	
-
 	content->curr_state = XML_STATE_DISPATCH;
 
 	return 0;
@@ -538,12 +552,17 @@ static void xml_free_element(struct xml_element *elm)
 	free(elm);
 }
 
-int xml_free(struct xml_element *tree)
+int xml_free_child(struct xml_element *tree)
 {
 	struct xml_element *tmp;
 
+        assert(tree);
 	if (tree == NULL)
 		return 0;
+        
+        tree = tree->child;
+        if (tree == NULL)
+                return 0;
 
         while (tree) {
                 tmp = tree;
@@ -553,6 +572,26 @@ int xml_free(struct xml_element *tree)
                 tree = tree->next;
 		xml_free_element(tmp);
 	}
+        
+        return 0;
+}
+int xml_free(struct xml_element *tree)
+{
+	if (tree == NULL)
+		return 0;
+ 
+        if (tree->parent && tree->parent->child == tree) {
+                assert(tree->prev == NULL);
+                tree->parent->child = tree->next;
+        } else if (tree->prev) {
+                tree->prev->next = tree->next;
+        } else {
+                assert(!"never come here");
+        }
+
+        xml_free_child(tree);
+
+        xml_free_element(tree);
 
         return 0;
 }
@@ -593,9 +632,36 @@ struct xml_element *xml_walkprev(const struct xml_element *node)
         assert(node);
         return node->next;
 }
+struct xml_element *xml_search_child(struct xml_element *parent, const wchar_t *name)
+{
+        struct xml_element *elm;
+
+        assert(parent);
+
+        for (elm = parent->child; elm; elm = elm->next) {
+               if (wcscmp(elm->name, name) == 0)
+                       break;
+        }
+
+        return elm;
+}
+
+struct xml_element *xml_search_brother(struct xml_element *brother, const wchar_t *name)
+{
+        struct xml_element *elm;
+
+        assert(brother);
+
+        for (elm = brother; elm; elm = elm->next) {
+               if (wcscmp(elm->name, name) == 0)
+                       break;
+        }
+
+        return elm;
+}
 
 
-struct xml_element *xml_new(const wchar_t *name, const wchar_t *value)
+struct xml_element *xml_new(const wchar_t *name, const wchar_t *value, enum xml_type type)
 {
         int name_len;
         int value_len;
@@ -604,7 +670,6 @@ struct xml_element *xml_new(const wchar_t *name, const wchar_t *value)
         struct xml_element      *elm;
 
         assert(name);
-        assert(value);
  
         elm = (struct xml_element *)malloc(sizeof(*elm));
         if (elm == NULL)
@@ -612,9 +677,13 @@ struct xml_element *xml_new(const wchar_t *name, const wchar_t *value)
 
         memset(elm, 0, sizeof(*elm));
         elm->is_closed = 1;
+        elm->type = type;
 
         name_len = wcslen(name);
-        value_len = wcslen(value);
+        if (value)
+                value_len = wcslen(value);
+        else
+                value_len = 0;
  
         if (name_len == 0) {
                 free(elm);
@@ -693,3 +762,276 @@ struct xml_element *xml_append_brother(struct xml_element *b1, struct xml_elemen
 
         return b2;
 }
+
+static int cacl_element_size(const struct xml_element *elm)
+{
+        int i;
+        int len;
+
+        assert(elm);
+
+        len = 2 * (wcslen(elm->name) + 5);
+        
+        if (elm->value)
+                len += wcslen(elm->value);
+        else
+                len += 3;
+
+        for (i = 0; i < array_size(elm->attr); i++) {
+                len += wcslen(array_at(elm->attr, i, struct xml_attr).name) + 4;
+                len += wcslen(array_at(elm->attr, i, struct xml_attr).value) + 3;
+        }
+
+        return len;
+}
+
+static int format_name(const struct xml_element *elm, wchar_t *buff, int size, int descent)
+{
+        int i;
+        int len;
+
+        assert(elm);
+        assert(buff);
+
+        len = 0;
+ 
+        assert(size > descent);
+        if (size < descent)
+                return 0;
+
+        len += descent;
+        while (descent--)
+                buff[descent] = L'\t';
+        if (elm->type == XML_ROOT)
+                len += swprintf(buff + len, L"<?%s", elm->name);
+        else if (elm->type == XML_COMMENT)
+                len += swprintf(buff + len, L"<!--%s", elm->name);
+        else if (elm->type == XML_ELEMENT)
+                len += swprintf(buff + len, L"<%s", elm->name);
+        else
+                assert(!"unknow xml element type");
+
+        for (i = 0; i < array_size(elm->attr); i++) {
+                len += swprintf(buff + len, L"\t%s=\"%s\"\r\n",
+                                array_at(elm->attr, i, struct xml_attr).name,
+                                array_at(elm->attr, i, struct xml_attr).value
+                        );
+        }
+        
+        if (elm->type == XML_ELEMENT_SELF) {
+                assert(elm->value);
+                len += swprintf(buff + len, L"/>");
+        } else if (elm->value && elm->type == XML_ELEMENT) {
+                len += swprintf(buff + len, L">%s", elm->value);
+        } else if (elm->child && elm->type == XML_ELEMENT) {
+                len += swprintf(buff + len, L">\r\n");
+        } else if (elm->type == XML_ELEMENT) {
+                len += swprintf(buff + len, L">");
+        } else if (elm->type == XML_COMMENT) {
+                len += swprintf(buff + len, L"-->\r\n");
+        } else if (elm->type == XML_ROOT) {
+                len += swprintf(buff + len, L"?>\r\n");
+        } else {
+                assert(!"oh, i forget this condition");
+        }
+        return len;
+}
+
+static int format_end(const struct xml_element *elm, wchar_t *buff, int size, int descent)
+{
+        int len;
+        assert(elm);
+        assert(buff);
+ 
+        assert(size >= descent);
+        if (size < descent)
+                return 0;
+
+        len = 0;
+        
+        if (elm->type == XML_ELEMENT && elm->child) {
+                len += descent;
+                while (descent--)
+                        buff[descent] = L'\t';
+        }
+
+        if (elm->type == XML_ELEMENT)
+                len += swprintf(buff + len, L"</%s>\r\n", elm->name);
+        else if (elm->type == XML_COMMENT)
+                len += swprintf(buff + len, L"-->");
+
+        return len;
+}
+
+static int cacl_name(const struct xml_element *elm, int descent)
+{
+        int i;
+        int len;
+
+        assert(elm);
+
+        len = 0;
+ 
+        len += descent;
+        if (elm->type == XML_ROOT) {
+                len += 2;       //swprintf(buff + len, L"<?%s", elm->name);
+                len += wcslen(elm->name);
+        } else if (elm->type == XML_COMMENT) {
+                len += 4;
+                len += wcslen(elm->name);       //L"<!--%s", elm->name);
+        } else if (elm->type == XML_ELEMENT) {
+                len += 1; //L"<%s"
+                len += wcslen(elm->name);
+        } else {
+                assert(!"unknow xml element type");
+        }
+
+        for (i = 0; i < array_size(elm->attr); i++) {
+                len += 6;       //L"\t%s=\"%s\"\r\n"
+                len += wcslen(array_at(elm->attr, i, struct xml_attr).name);
+                len += wcslen(array_at(elm->attr, i, struct xml_attr).value);
+        }
+        
+        if (elm->type == XML_ELEMENT_SELF) {
+                assert(elm->value);
+                len += 2;       //L"/>"
+        } else if (elm->value && elm->type == XML_ELEMENT) {
+                len += 1;       //L">%s
+                len += wcslen(elm->value);
+        } else if (elm->child && elm->type == XML_ELEMENT) {
+                len += 3;       //L">\r\n"
+        } else if (elm->type == XML_ELEMENT) {
+                len += 1;
+                //len += swprintf(buff + len, L">");
+        } else if (elm->type == XML_COMMENT) {
+                len += 5;
+                //len += swprintf(buff + len, L"-->\r\n");
+        } else if (elm->type == XML_ROOT) {
+                len += 4;
+                //len += swprintf(buff + len, L"?>\r\n");
+        } else {
+                assert(!"oh, i forget this condition");
+        }
+
+        return len;
+}
+
+static int cacl_end(const struct xml_element *elm, int descent)
+{
+        int len;
+        assert(elm);
+
+        len = 0;
+
+        if (elm->type == XML_COMMENT || elm->type == XML_ROOT)
+                return 0;
+
+        if (elm->type == XML_ELEMENT && elm->child) {
+                len += descent;
+        }
+
+        if (elm->type == XML_ELEMENT) {
+                len += 5;       //L"</%s>\r\n",
+                len += wcslen(elm->name);
+        } else if (elm->type == XML_COMMENT) {
+                len += 3;       //L"-->"
+        }
+
+        return len;
+}
+
+static int format_tree(const struct xml_element *tree, wchar_t *buff, unsigned long cnt, int descent)
+{
+        int size;
+        const struct xml_element *tmp;
+
+        assert(tree);
+        assert(buff);
+ 
+	if (tree == NULL)
+		return 0;
+
+        size = 0;
+
+        while (tree) {
+                tmp = tree;
+                size += format_name(tmp, buff + size, cnt - size, descent);
+
+                descent += 1;
+
+		if (tmp->child)
+			size += format_tree(tmp->child, buff + size, cnt - size, descent);
+
+                tree = tree->next;
+
+                descent -= 1;
+                assert(descent >= 0);
+
+		size += format_end(tmp, buff + size, cnt - size, descent);
+	}
+
+        return size;
+}
+
+static int cacl_tree(const struct xml_element *tree, int descent)
+{
+        int size;
+        const struct xml_element *tmp;
+
+        assert(tree);
+	if (tree == NULL)
+		return 0;
+
+        size = 0;
+
+        while (tree) {
+                tmp = tree;
+                size += cacl_name(tmp, descent);
+
+                descent += 1;
+
+		if (tmp->child)
+			size += cacl_tree(tmp->child, descent);
+
+                tree = tree->next;
+
+                descent -= 1;
+                assert(descent >= 0);
+
+		size += cacl_end(tmp, descent);
+	}
+
+        return size;
+}
+
+int xml_need_len(const struct xml_element *tree)
+{
+        int size;
+        assert(tree);
+	if (tree == NULL)
+		return 0;
+
+        size = cacl_tree(tree, 0);
+
+        return size + 2;
+}
+
+int xml_save_data(const struct xml_element *tree, wchar_t *buff, unsigned long cnt)
+{
+        int size;
+ 
+        assert(tree);
+        assert(buff);
+        if (cnt < 2)
+                return -1;
+
+        //unicode
+        buff[0] = 0xfeff;
+        buff++;
+        cnt--;
+
+        size = format_tree(tree, buff, cnt, 0);
+
+        return size + 1;
+}
+

@@ -360,7 +360,13 @@ static int state_value(struct xml_state_content *content)
 	int len;
 	wchar_t *value;
 	content->data_curr = skip_space(content->data_curr, content->data_end);
-	if (*content->data_curr == L'<') {
+
+        if (content->data_end - content->data_curr >= 2 &&
+                *content->data_curr == L'<' &&
+                *(content->data_curr + 1) == L'/') {
+                content->curr_state = XML_STATE_DISPATCH;
+                return 0;
+        } else if (*content->data_curr == L'<') {
 		add_elem(content);
 		content->curr_state = XML_STATE_OPEN;
 		return 0;
@@ -517,7 +523,7 @@ struct xml_element *xml_load_file(const wchar_t *path)
 	fp = NULL;
 	data = NULL;
 
-	fp = _wfopen(path, L"r+");
+	fp = _wfopen(path, L"rb+");
 	if (fp == NULL)
 		goto end;
 

@@ -12,7 +12,7 @@ const wchar_t *skip_space(const wchar_t *data, const wchar_t *data_end)
 	assert(data);
 	assert(data_end);
 
-	while (str_issapce(*data) && data < data_end)
+	while (str_issapce(*data))
 		data++;
 
 	return data;
@@ -22,8 +22,6 @@ int strlen_t(const wchar_t *c, const wchar_t *end, const wchar_t *termi)
 {
 	const wchar_t *t;
 	const wchar_t *org;
-
-        assert(c < end);
 
 	org = c;
 	while (c < end) {

@@ -208,13 +208,8 @@ static int state_open(struct xml_state_content *content)
 		return 0;
 	}
 	
-	while (*data != L'<' && data < content->data_end)
+	while (*data != L'<')
 		data++;
-
-        if (data >= content->data_end) {
-                content->curr_state = XML_STATE_END;
-                return 0;
-        }
 	if (*data == L'<')
 		data++;
 
@@ -511,8 +506,6 @@ static xml_element *parse_data(const wchar_t *data, unsigned long size)
 		state_content.last_state = last_state;
 	}
 
-        assert(state_content.have_err == 0);
-
 	return state_content.tree;
 }
 
@@ -540,9 +533,8 @@ struct xml_element *xml_load_file(const wchar_t *path)
 	
 	if (fread(data, 1, st.st_size, fp) != st.st_size)
 		goto end;
- 
-	tree = parse_data(data, st.st_size);
 
+	tree = parse_data(data, st.st_size);
 end:
 	if (fp)
 		fclose(fp);
@@ -577,8 +569,6 @@ int xml_free_child(struct xml_element *tree)
         tree = tree->child;
         if (tree == NULL)
                 return 0;
-
-        tree->parent->child = NULL;
 
         while (tree) {
                 tmp = tree;
@@ -1029,7 +1019,7 @@ int xml_need_len(const struct xml_element *tree)
 
         size = cacl_tree(tree, 0);
 
-        return size + 1;
+        return size + 2;
 }
 
 int xml_save_data(const struct xml_element *tree, wchar_t *buff, unsigned long cnt)

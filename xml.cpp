@@ -623,6 +623,38 @@ const wchar_t *xml_get_value(const struct xml_element *node)
         assert(node);
         return node->value;
 }
+/* TODO:
+ *      定义一种字符串类型记录内存分配大小与字串长度
+ *      如果当前字符串比较短直接copy即可
+ */
+
+
+wchar_t *xml_set_value(struct xml_element *node, const wchar_t *value)
+{
+        int len;
+        wchar_t *v;
+
+        assert(value);
+
+        v = (wchar_t *)node->value;
+
+        if (node->value) {
+                free(v);
+                node->value = NULL;
+        }
+        
+        len = wcslen(value);
+        v = (wchar_t *) malloc((len + 1)* sizeof(wchar_t));
+        if (v == NULL)
+                return NULL;
+
+        wcsncpy(v, value, len);
+        v[len] = 0;
+ 
+        node->value =v;
+
+        return (wchar_t *)value;
+}
 
 
 struct xml_element *xml_walkdown(const struct xml_element *node)

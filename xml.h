@@ -19,6 +19,8 @@ int xml_free(struct xml_element *tree);
 const wchar_t *xml_get_name(const struct xml_element *node);
 const wchar_t *xml_get_value(const struct xml_element *node);
 
+wchar_t *xml_set_value(struct xml_element *node, const wchar_t *value);
+
 struct xml_element *xml_walkdown(const struct xml_element *node);
 struct xml_element *xml_walkup(const struct xml_element *node);
 struct xml_element *xml_walknext(const struct xml_element *node);

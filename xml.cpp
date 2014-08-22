@@ -31,6 +31,7 @@ struct xml_element {
 enum xml_state {
 	XML_STATE_OPEN,
 	XML_STATE_NAME,
+        XML_STATE_COMMENT,
 	XML_STATE_ATTR,
 	XML_STATE_VALUE,
 	XML_STATE_CLOSE,
@@ -49,8 +50,6 @@ struct xml_state_content {
 	enum xml_state curr_state;
 };
 
-
-
 static struct xml_element *new_elem(enum xml_type type)
 {
 	struct xml_element *elem;
@@ -63,6 +62,20 @@ static struct xml_element *new_elem(enum xml_type type)
         }
 
 	return elem;
+}
+
+static void xml_free_element(struct xml_element *elm)
+{
+	assert(elm);
+
+        if (elm->attr)
+	        array_release(elm->attr);
+	if (elm->name)
+		free((wchar_t *)elm->name);
+	if (elm->value)
+		free((wchar_t *)elm->value);
+
+	free(elm);
 }
 
 static int add_brother(struct xml_element **dst, struct xml_element *src)
@@ -230,14 +243,8 @@ static int state_open(struct xml_state_content *content)
 
 	content->data_curr = data;
 
-	if (content->tmp == NULL) {
-		content->have_err = 1;
-		content->curr_state = XML_STATE_END;
 
-		return 0;
-	}
-
-	content->curr_state = XML_STATE_NAME;
+	content->curr_state = XML_STATE_DISPATCH;
 
 	return 0;
 }
@@ -278,6 +285,33 @@ static int state_name(struct xml_state_content *content)
 	return 0;
 
 }
+
+static int state_comment(struct xml_state_content *content)
+{
+ 	int name_len;
+	wchar_t *name;
+
+	name_len = strlen_t(content->data_curr, content->data_end, L"-");
+	name = (wchar_t *)malloc(name_len * sizeof(wchar_t) + sizeof(wchar_t));
+	if (name == NULL) {
+		content->have_err = 1;
+		content->curr_state = XML_STATE_END;
+		return 0;
+	}
+
+	strcpy_t(name, content->data_curr, L"-");
+
+	content->tmp->name = name;
+	close_elem(content);
+        add_elem(content);
+
+        content->curr_state = XML_STATE_DISPATCH;
+
+	return 0;
+
+       
+}
+
 static int state_attr(struct xml_state_content *content)
 {
 	int len, len2;
@@ -409,6 +443,16 @@ static int state_close(struct xml_state_content *content)
 }
 static int state_end(struct xml_state_content *content)
 {
+        if (content->have_err == 0)
+                return 0;
+ 
+        if (content->tmp)
+                xml_free_element(content->tmp);
+        if (content->tree)
+                xml_free(content->tree);
+
+        content->tree = NULL;
+
 	return 0;
 }
 static int state_dispatch(struct xml_state_content *content)
@@ -420,6 +464,25 @@ static int state_dispatch(struct xml_state_content *content)
 	}
 
 	switch (content->last_state) {
+        case XML_STATE_OPEN:
+                if (str_issapce(*content->data_curr) ||
+                        (content->data_curr + 2 >= content->data_end)) {
+                        content->have_err = 1;
+                        content->curr_state = XML_STATE_END;
+                }
+                
+                if (content->tmp == NULL) {
+                        content->have_err = 1;
+                        content->curr_state = XML_STATE_END;
+
+                        return 0;
+                }
+
+                if (content->tmp->type == XML_COMMENT)
+                        content->curr_state = XML_STATE_COMMENT;
+                else
+                        content->curr_state = XML_STATE_NAME;
+                break;
 	case XML_STATE_NAME:
 		if (str_issapce(*content->data_curr)) {
 			content->curr_state = XML_STATE_ATTR;
@@ -431,6 +494,16 @@ static int state_dispatch(struct xml_state_content *content)
 			content->curr_state = XML_STATE_END;
 		}
 		break;
+        case XML_STATE_COMMENT:
+		content->data_curr = skip_space(content->data_curr, content->data_end);
+                if (content->data_curr == content->data_end)
+                        content->curr_state = XML_STATE_END;
+
+                if (content->data_end - content->data_curr > 2 && *content->data_curr == L'<' && *(content->data_curr + 1) == L'/')
+			content->curr_state = XML_STATE_CLOSE;
+                else
+                        content->curr_state = XML_STATE_OPEN;
+                break;
 	case XML_STATE_ATTR:
 		content->data_curr = skip_space(content->data_curr, content->data_end);
 		if (content->data_curr >= content->data_end) {
@@ -474,6 +547,7 @@ typedef int (state_func_t)(struct xml_state_content *content);
 state_func_t *state_func_tbl[] = {
 	state_open,
 	state_name,
+        state_comment,
 	state_attr,
 	state_value,
 	state_close,
@@ -552,19 +626,7 @@ end:
 	return tree;
 }
 
-static void xml_free_element(struct xml_element *elm)
-{
-	assert(elm);
 
-        if (elm->attr)
-	        array_release(elm->attr);
-	if (elm->name)
-		free((wchar_t *)elm->name);
-	if (elm->value)
-		free((wchar_t *)elm->value);
-
-	free(elm);
-}
 
 int xml_free_child(struct xml_element *tree)
 {
@@ -602,7 +664,7 @@ int xml_free(struct xml_element *tree)
         } else if (tree->prev) {
                 tree->prev->next = tree->next;
         } else {
-                assert(!"never come here");
+                //do nothing
         }
 
         xml_free_child(tree);
@@ -610,6 +672,31 @@ int xml_free(struct xml_element *tree)
         xml_free_element(tree);
 
         return 0;
+}
+
+enum xml_type xml_get_type(const struct xml_element *node)
+{
+        assert(node);
+
+        return node->type;
+}
+
+const wchar_t *xml_get_attr(const struct xml_element *node, const wchar_t *attr_name)
+{
+        int i;
+
+        assert(node);
+        assert(attr_name);
+
+        for (i = 0; i < array_size(node->attr); i++) {
+                if (wcscmp(array_at(node->attr, i, struct xml_attr).name, attr_name) == 0)
+                        break;
+        }
+        
+        if (i >= array_size(node->attr))
+                return NULL;
+
+        return array_at(node->attr, i, struct xml_attr).value; 
 }
 
 const wchar_t *xml_get_name(const struct xml_element *node)
@@ -680,7 +767,7 @@ struct xml_element *xml_walkprev(const struct xml_element *node)
         assert(node);
         return node->next;
 }
-struct xml_element *xml_search_child(struct xml_element *parent, const wchar_t *name)
+struct xml_element *xml_search_child(const struct xml_element *parent, const wchar_t *name)
 {
         struct xml_element *elm;
 

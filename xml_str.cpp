@@ -44,7 +44,7 @@ end:
 int strcpy_t(wchar_t *c, const wchar_t *src, const wchar_t *termi)
 {
 	const wchar_t *t;
-	while (1) {
+	while ((void) 0, 1) {
 		t = termi;
 		while (*t != 0) {
 			if (*t == *src)

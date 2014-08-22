@@ -16,6 +16,8 @@ struct xml_element *xml_new(const wchar_t *name, const wchar_t *value, enum xml_
 int xml_free_child(struct xml_element *tree);
 int xml_free(struct xml_element *tree);
 
+enum xml_type xml_get_type(const struct xml_element *node);
+const wchar_t *xml_get_attr(const struct xml_element *node, const wchar_t *attr_name);
 const wchar_t *xml_get_name(const struct xml_element *node);
 const wchar_t *xml_get_value(const struct xml_element *node);
 
@@ -26,8 +28,8 @@ struct xml_element *xml_walkup(const struct xml_element *node);
 struct xml_element *xml_walknext(const struct xml_element *node);
 struct xml_element *xml_walkprev(const struct xml_element *node);
 
-struct xml_element *xml_search_child(struct xml_element *parent, const wchar_t *name);
-struct xml_element *xml_search_brother(struct xml_element *brother, const wchar_t *name);
+struct xml_element *xml_search_child(const struct xml_element *parent, const wchar_t *name);
+struct xml_element *xml_search_brother(const struct xml_element *brother, const wchar_t *name);
 
 
 struct xml_element *xml_append_child(struct xml_element *parent, struct xml_element *child);

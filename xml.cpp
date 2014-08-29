@@ -278,9 +278,9 @@ static int state_name(struct xml_state_content *content)
 		add_elem(content);
 	} else {
 		content->curr_state = XML_STATE_DISPATCH;
+	        content->data_curr += name_len;
 	}
 
-	content->data_curr += name_len;
 
 	return 0;
 
@@ -411,7 +411,7 @@ static int state_value(struct xml_state_content *content)
 		return 0;
 	}
 
-	len = strlen_t(content->data_curr, content->data_end, L"< ");
+	len = strlen_t(content->data_curr, content->data_end, L"<");
 
 	assert(content->tmp);
 
@@ -421,7 +421,7 @@ static int state_value(struct xml_state_content *content)
 		return 0;
 	}
 
-	strcpy_t(value, content->data_curr, L"< ");
+	strcpy_t(value, content->data_curr, L"<");
 
 	content->tmp->value = value;
 	content->data_curr += len;
@@ -522,6 +522,7 @@ static int state_dispatch(struct xml_state_content *content)
 		}
 		break;
 	case XML_STATE_VALUE:
+		content->data_curr = skip_space(content->data_curr, content->data_end);
 		if (*content->data_curr == L'<' && *(content->data_curr + 1) == L'/') {
 			content->curr_state = XML_STATE_CLOSE;
 		} else {
@@ -612,7 +613,7 @@ struct xml_element *xml_load_file(const wchar_t *path)
 	if (data == NULL)
 		goto end;
 	
-	if (fread(data, 1, st.st_size, fp) != st.st_size)
+	if (fread(data, 1, st.st_size, fp) != (size_t)st.st_size)
 		goto end;
  
 	tree = parse_data(data, st.st_size);
@@ -866,6 +867,8 @@ struct xml_element *xml_append_child(struct xml_element *parent, struct xml_elem
         if (parent->child == NULL) {
                 parent->child = child;
                 child->parent = parent;
+                if (parent->type == XML_ELEMENT_SELF)
+                        parent->type = XML_ELEMENT;
                 return child;
         }
 
@@ -898,28 +901,6 @@ struct xml_element *xml_append_brother(struct xml_element *b1, struct xml_elemen
         return b2;
 }
 
-static int cacl_element_size(const struct xml_element *elm)
-{
-        int i;
-        int len;
-
-        assert(elm);
-
-        len = 2 * (wcslen(elm->name) + 5);
-        
-        if (elm->value)
-                len += wcslen(elm->value);
-        else
-                len += 3;
-
-        for (i = 0; i < array_size(elm->attr); i++) {
-                len += wcslen(array_at(elm->attr, i, struct xml_attr).name) + 4;
-                len += wcslen(array_at(elm->attr, i, struct xml_attr).value) + 3;
-        }
-
-        return len;
-}
-
 static int format_name(const struct xml_element *elm, wchar_t *buff, int size, int descent)
 {
         int i;
@@ -941,7 +922,7 @@ static int format_name(const struct xml_element *elm, wchar_t *buff, int size, i
                 len += swprintf(buff + len, L"<?%s", elm->name);
         else if (elm->type == XML_COMMENT)
                 len += swprintf(buff + len, L"<!--%s", elm->name);
-        else if (elm->type == XML_ELEMENT)
+        else if (elm->type == XML_ELEMENT || elm->type == XML_ELEMENT_SELF)
                 len += swprintf(buff + len, L"<%s", elm->name);
         else
                 assert(!"unknow xml element type");
@@ -954,7 +935,7 @@ static int format_name(const struct xml_element *elm, wchar_t *buff, int size, i
         }
         
         if (elm->type == XML_ELEMENT_SELF) {
-                assert(elm->value);
+                assert(elm->value == NULL);
                 len += swprintf(buff + len, L"/>");
         } else if (elm->value && elm->type == XML_ELEMENT) {
                 len += swprintf(buff + len, L">%s", elm->value);
@@ -1014,7 +995,7 @@ static int cacl_name(const struct xml_element *elm, int descent)
         } else if (elm->type == XML_COMMENT) {
                 len += 4;
                 len += wcslen(elm->name);       //L"<!--%s", elm->name);
-        } else if (elm->type == XML_ELEMENT) {
+        } else if (elm->type == XML_ELEMENT || elm->type == XML_ELEMENT_SELF) {
                 len += 1; //L"<%s"
                 len += wcslen(elm->name);
         } else {
@@ -1028,7 +1009,7 @@ static int cacl_name(const struct xml_element *elm, int descent)
         }
         
         if (elm->type == XML_ELEMENT_SELF) {
-                assert(elm->value);
+                assert(elm->value == NULL);
                 len += 2;       //L"/>"
         } else if (elm->value && elm->type == XML_ELEMENT) {
                 len += 1;       //L">%s

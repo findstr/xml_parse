@@ -1,13 +1,12 @@
 // xml_test.cpp : Defines the entry point for the console application.
 //
 
-#include "stdafx.h"
 #include "xml.h"
 
-int _tmain(int argc, _TCHAR* argv[])
+int main(int argc, char* argv[])
 {
 	
-	xml_load(L"E:\\config_file.xml");
+	xml_load_file(L"E:\\config_file.xml");
 
 	return 0;
 }

@@ -18,6 +18,14 @@ const wchar_t *skip_space(const wchar_t *data, const wchar_t *data_end)
 	return data;
 }
 
+const wchar_t *str_forward(const wchar_t *data, const wchar_t *data_end, int ch)
+{
+        while (*data != ch && data < data_end)
+                data++;
+
+        return data;
+}
+
 int strlen_t(const wchar_t *c, const wchar_t *end, const wchar_t *termi)
 {
 	const wchar_t *t;

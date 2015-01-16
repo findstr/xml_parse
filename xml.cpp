@@ -316,8 +316,10 @@ static int state_attr(struct xml_state_content *content)
 {
 	int len, len2;
 	int attr_cnt;
+        const wchar_t *tmp;
 	struct xml_attr	attr;
-	attr_cnt = str_count(content->data_curr, content->data_end, L'=', L'>', 0);
+	attr_cnt = str_count(content->data_curr, content->data_end, L'\"', L'>', 0);
+        attr_cnt /= 2;
 	if (attr_cnt == 0) {
 		content->have_err = 1;
 		content->curr_state = XML_STATE_END;
@@ -342,8 +344,17 @@ static int state_attr(struct xml_state_content *content)
 			return 0;
 		}
 
-		len = strlen_t(content->data_curr, content->data_end, L"=");
-		len2 = strlen_t(content->data_curr + len + 2, content->data_end, L"\">");
+                //attr
+		len = strlen_t(content->data_curr, content->data_end, L"="XML_SPACE_STR);
+                //name
+                tmp = str_forward(content->data_curr + len, content->data_end,'\"');
+                if (tmp >= content->data_end) {
+                        content->have_err = 1;
+			content->curr_state = XML_STATE_END;
+                        return 0;
+                }
+
+		len2 = strlen_t(tmp + 1, content->data_end, L"\">");
 
 		if (*(content->data_curr + len) != L'=' ||
 			*(content->data_curr + len +1) != L'\"' ||
@@ -605,7 +616,7 @@ struct xml_element *xml_load_file(const wchar_t *path)
 	fp = NULL;
 	data = NULL;
 
-	fp = _wfopen(path, L"rb+");
+	fp = _wfopen(path, L"rb");
 	if (fp == NULL)
 		goto end;
 
